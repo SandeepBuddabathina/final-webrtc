@@ -1,76 +1,3 @@
-// import { Component, OnInit, ViewChild, ElementRef } from "@angular/core";
-// import { ActivatedRoute } from "@angular/router";
-// import { VideoCallService } from "../video-call.service";
-
-// @Component({
-//   selector: "app-video-call",
-//   templateUrl: "./video-call.component.html",
-//   styleUrls: ["./video-call.component.css"],
-// })
-// export class VideoCallComponent implements OnInit {
-//   @ViewChild("localVideo") localVideo!: ElementRef;
-//   meetingId!: string;
-//   localStream!: MediaStream;
-//   remoteStreams: { [key: string]: MediaStream } = {};
-//   participants: string[] = [];
-//   searchQuery: string = "";
-//   videoEnabled: boolean = true;
-//   audioEnabled: boolean = true;
-
-//   constructor(
-//     private route: ActivatedRoute,
-//     private videoCallService: VideoCallService
-//   ) {}
-
-//   ngOnInit() {
-//     this.meetingId = this.route.snapshot.paramMap.get("meetingId") || "";
-//     this.startCall();
-//     this.videoCallService.getParticipantUpdates().subscribe((participants) => {
-//       this.participants = participants;
-//     });
-//   }
-
-//   startCall() {
-//     this.videoCallService
-//       .initLocalStream()
-//       .then((stream) => {
-//         this.localStream = stream;
-//         this.localVideo.nativeElement.srcObject = this.localStream;
-//         this.videoCallService.joinRoom(this.meetingId);
-//         this.videoCallService.getRemoteStreamsObservable().subscribe((streams) => {
-//           this.remoteStreams = streams;
-//         });
-//       })
-//       .catch((error) =>
-//         console.error("Error accessing camera/microphone:", error)
-//       );
-//   }
-
-//   getRemoteStreamKeys(): string[] {
-//     return Object.keys(this.remoteStreams);
-//   }
-
-//   copyMeetingLink() {
-//     const meetingLink = `${window.location.origin}/video-call/${this.meetingId}`;
-//     navigator.clipboard.writeText(meetingLink).then(() => {
-//       alert("Meeting link copied to clipboard: " + meetingLink);
-//     }).catch(err => console.error("Failed to copy link: ", err));
-//   }
-
-//   filteredParticipants(): string[] {
-//     return this.participants.filter(user => user.toLowerCase().includes(this.searchQuery.toLowerCase()));
-//   }
-
-//   toggleVideo() {
-//     this.videoEnabled = !this.videoEnabled;
-//     this.localStream.getVideoTracks().forEach(track => track.enabled = this.videoEnabled);
-//   }
-
-//   toggleAudio() {
-//     this.audioEnabled = !this.audioEnabled;
-//     this.localStream.getAudioTracks().forEach(track => track.enabled = this.audioEnabled);
-//   }
-// }
 import { Component, OnInit, ViewChild, ElementRef } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
 import { VideoCallService } from "../video-call.service";
@@ -87,13 +14,18 @@ export class VideoCallComponent implements OnInit {
   localStream!: MediaStream;
 
   remoteStreams: { [key: string]: MediaStream } = {};
+  remoteVideoHidden: { [key: string]: boolean } = {}; // NEW: for remote video visibility toggle
   participants: string[] = [];
   signalStrengths: { [key: string]: number } = {};  // Track signal strength for each participant
-  connectionStatus: string = "Connecting...";  // Add a default connection status
+  connectionStatus: string = "Connecting...";
   searchQuery: string = "";
   videoEnabled: boolean = true;
   audioEnabled: boolean = true;
   showParticipants: boolean = false;
+  enlargedVideoUserId: string | null = null;
+  isDarkMode = false;
+
+  menuOpenFor: string | null = null; // NEW: Track open menu userId
 
   constructor(
     private route: ActivatedRoute,
@@ -104,17 +36,28 @@ export class VideoCallComponent implements OnInit {
   ngOnInit() {
     this.meetingId = this.route.snapshot.paramMap.get("meetingId") || "";
     this.startCall();
+
     this.videoCallService.getParticipantUpdates().subscribe((participants) => {
       this.participants = participants;
-      // Update signal strengths dynamically for the participants
+
       this.participants.forEach((userId) => {
         if (!this.signalStrengths[userId]) {
-          this.signalStrengths[userId] = 100;  // Initial signal strength for demo
+          this.signalStrengths[userId] = 100;
         }
       });
     });
-  }
 
+    this.simulateSignalStrength(); // Optional: for signal simulation
+  }
+  toggleDarkMode() {
+    this.isDarkMode = !this.isDarkMode;
+    const root = document.documentElement;
+    if (this.isDarkMode) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }
   startCall() {
     this.videoCallService
       .initLocalStream()
@@ -122,49 +65,51 @@ export class VideoCallComponent implements OnInit {
         this.localStream = stream;
         this.localVideo.nativeElement.srcObject = this.localStream;
         this.videoCallService.joinRoom(this.meetingId);
+
         this.videoCallService.getRemoteStreamsObservable().subscribe((streams) => {
           this.remoteStreams = streams;
 
-          // Update signal strength when remote streams are updated
           Object.keys(this.remoteStreams).forEach((userId) => {
             if (!this.signalStrengths[userId]) {
-              this.signalStrengths[userId] = 100;  // Assign initial signal strength
+              this.signalStrengths[userId] = 100;
             }
           });
         });
 
-        this.connectionStatus = "Connected";  // Update connection status once connected
+        this.connectionStatus = "Connected";
       })
       .catch((error) =>
         console.error("Error accessing camera/microphone:", error)
       );
   }
 
+  enlargeVideo(userId: string) {
+    this.enlargedVideoUserId = this.enlargedVideoUserId === userId ? null : userId;
+  }
+
   getRemoteStreamKeys(): string[] {
     return Object.keys(this.remoteStreams);
   }
 
-  // Method to return the connection status (Live, Connecting, or Low Signal)
   getConnectionStatus(userId: string): string {
     const status = this.signalStrengths[userId] || 0;
     if (status > 55) {
-      return 'Live';  // Strong signal
+      return 'Live';
     } else if (status > 40) {
-      return 'Connecting...';  // Medium signal
+      return 'Connecting...';
     } else {
-      return 'Low Signal';  // Weak signal
+      return 'Low Signal';
     }
   }
 
-  // Method to return the CSS class for the signal strength (colored dots)
   getConnectionStatusClass(userId: string): string {
     const status = this.signalStrengths[userId] || 0;
     if (status > 55) {
-      return 'bg-green-500';  // Live - green dot
+      return 'bg-green-500';
     } else if (status > 40) {
-      return 'bg-yellow-500'; // Connecting - yellow dot
+      return 'bg-yellow-500';
     } else {
-      return 'bg-red-500';    // Low signal - red dot
+      return 'bg-red-500';
     }
   }
 
@@ -221,14 +166,23 @@ export class VideoCallComponent implements OnInit {
     this.toastr.success('This is a test toast!', 'Test');
   }
 
-  // Simulate periodic signal strength changes
   simulateSignalStrength() {
     setInterval(() => {
-      // Randomly change signal strength for remote participants (for demo purposes)
       this.participants.forEach((userId) => {
-        const randomSignal = Math.floor(Math.random() * 101); // Random value between 0-100
+        const randomSignal = Math.floor(Math.random() * 101);
         this.signalStrengths[userId] = randomSignal;
       });
-    }, 5000); // Update signal strength every 5 seconds
+    }, 5000);
+  }
+
+  // NEW: Show/hide dropdown menu
+  toggleMenu(userId: string) {
+    this.menuOpenFor = this.menuOpenFor === userId ? null : userId;
+  }
+
+  // NEW: Toggle visibility of a specific remote user's video
+  toggleRemoteVideo(userId: string) {
+    this.remoteVideoHidden[userId] = !this.remoteVideoHidden[userId];
+    this.toastr.info(`${this.remoteVideoHidden[userId] ? 'Hiding' : 'Showing'} ${userId}'s video`, 'Info');
   }
 }
