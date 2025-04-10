@@ -1,18 +1,17 @@
 import { Component, OnInit, ViewChild, ElementRef } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
-import { VideoCallService } from "../video-call.service";
+import { VideoCallService } from "../services/video-call.service";
 import { ToastrService } from 'ngx-toastr'; // Import ToastrService
-
+import { FaceExpressionService } from '../services/face-expression.service';
 @Component({
   selector: "app-video-call",
   templateUrl: "./video-call.component.html",
   styleUrls: ["./video-call.component.css"],
 })
 export class VideoCallComponent implements OnInit {
-  @ViewChild("localVideo") localVideo!: ElementRef;
   meetingId!: string;
   localStream!: MediaStream;
-
+  @ViewChild('localVideo', { static: true }) localVideo!: ElementRef<HTMLVideoElement>;
   remoteStreams: { [key: string]: MediaStream } = {};
   remoteVideoHidden: { [key: string]: boolean } = {}; // NEW: for remote video visibility toggle
   participants: string[] = [];
@@ -24,15 +23,31 @@ export class VideoCallComponent implements OnInit {
   showParticipants: boolean = false;
   enlargedVideoUserId: string | null = null;
   isDarkMode = false;
-
+  detectedExpression: string = '';
   menuOpenFor: string | null = null; // NEW: Track open menu userId
+  localVideoHidden = false;
+  referenceImage: HTMLImageElement | null = null;
+  faceMismatchDetected: boolean = false;
+  showPopup: boolean = false;
 
   constructor(
     private route: ActivatedRoute,
     private videoCallService: VideoCallService,
-    private toastr: ToastrService
+    private toastr: ToastrService,
+    private faceService: FaceExpressionService
   ) {}
 
+
+  async ngAfterViewInit() {
+    await this.faceService.loadModels();
+    this.startExpressionDetection();
+    this.loadReferenceImage(); 
+    
+  }
+  closePopup() {
+    this.showPopup = false;
+  }
+  
   ngOnInit() {
     this.meetingId = this.route.snapshot.paramMap.get("meetingId") || "";
     this.startCall();
@@ -48,6 +63,12 @@ export class VideoCallComponent implements OnInit {
     });
 
     this.simulateSignalStrength(); // Optional: for signal simulation
+    
+  }
+  async loadReferenceImage() {
+    this.referenceImage = new Image();
+    this.referenceImage.src = 'assets/images/reference.jpg'; // Path to your reference image
+    await this.referenceImage.decode();
   }
   toggleDarkMode() {
     this.isDarkMode = !this.isDarkMode;
@@ -57,6 +78,9 @@ export class VideoCallComponent implements OnInit {
     } else {
       root.classList.remove('dark');
     }
+  }
+  toggleLocalVideo() {
+    this.localVideoHidden = !this.localVideoHidden;
   }
   startCall() {
     this.videoCallService
@@ -184,5 +208,43 @@ export class VideoCallComponent implements OnInit {
   toggleRemoteVideo(userId: string) {
     this.remoteVideoHidden[userId] = !this.remoteVideoHidden[userId];
     this.toastr.info(`${this.remoteVideoHidden[userId] ? 'Hiding' : 'Showing'} ${userId}'s video`, 'Info');
+  }
+  startExpressionDetection() {
+    const videoElement = this.localVideo.nativeElement;
+  
+    setInterval(async () => {
+      const expressions = await this.faceService.detectExpressions(videoElement);
+      if (expressions) {
+        const topExpression = Object.entries(expressions)
+          .sort((a, b) => b[1] - a[1])[0][0];
+  
+        this.detectedExpression = topExpression; // Set it to display in UI
+        console.log('Detected expression:', topExpression);
+        const isFaceRecognized = await this.compareFaceWithReference(videoElement);
+        if (isFaceRecognized) {
+          console.log('Face recognized');
+        } else {
+          console.log('Face not recognized');
+        }
+      }
+    }, 5000); // Detect face expression and recognize face every 5 seconds
+  }
+  getExpressionEmoji(expression: string): string {
+    const emojiMap: { [key: string]: string } = {
+      happy: '😊',
+      sad: '😢',
+      angry: '😠',
+      fearful: '😨',
+      disgusted: '🤢',
+      surprised: '😲',
+      neutral: '😐'
+    };
+    return emojiMap[expression] || '';
+  }
+  async compareFaceWithReference(videoElement: HTMLVideoElement): Promise<boolean> {
+    if (!this.referenceImage) return false;
+  
+    const result = await this.faceService.compareFace(videoElement, this.referenceImage);
+    return result;
   }
 }

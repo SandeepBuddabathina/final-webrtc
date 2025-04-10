@@ -16,10 +16,24 @@
       <!-- Local Video -->
       <div class="relative overflow-hidden text-center bg-white rounded-xl">
         <video #localVideo autoplay playsinline muted class="object-cover w-full h-48 border border-violet-600 rounded-xl"></video>
-        <!-- Status Bar -->
-        <div class="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-2 px-2 py-1 text-white bg-black bg-opacity-60 rounded-b-xl">
-          <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-          <div class="text-xs font-medium text-green-400">You (Live)</div>
+        
+        <!-- Status Bar + Three-dot Menu -->
+        <div class="absolute bottom-0 left-0 right-0 flex items-center justify-between px-2 py-1 text-white bg-black bg-opacity-60 rounded-b-xl">
+          <!-- Status on the left side -->
+          <div class="flex items-center gap-2">
+            <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+            <div class="text-xs font-medium text-green-400">You (Live)</div>
+          </div>
+      
+          <!-- Three-dot Menu on the right side -->
+          <div>
+            <button (click)="toggleMenu('local')" class="w-6 h-6 leading-6 text-center text-white rounded-full">⋮</button>
+            <div *ngIf="menuOpenFor === 'local'" class="absolute right-0 z-10 w-32 mt-2 text-black bg-white rounded shadow bottom-8">
+              <button (click)="toggleLocalVideo()" class="block w-full px-4 py-2 text-left hover:bg-gray-100">
+                {{ localVideoHidden ? 'Show Video' : 'Hide Video' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -40,7 +54,7 @@
           <span class="text-gray-600">Video Hidden</span>
         </div>
 
-        <!-- Bottom Bar: Status + Three-dot Menu -->
+        <!-- Bottom Bar: Status + Expression + Three-dot Menu -->
         <div class="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-1 text-white bg-black bg-opacity-60 rounded-b-xl">
           <div class="flex items-center gap-2">
             <div class="w-2.5 h-2.5 rounded-full" [ngClass]="getConnectionStatusClass(userId)"></div>
@@ -53,9 +67,16 @@
             </div>
           </div>
 
+          <!-- Expression Display (Aligned Properly) -->
+          <div class="absolute flex items-center justify-center px-2 py-1 transform -translate-x-1/2 bottom-1 left-1/2 rounded-b-xl">
+            <span *ngIf="detectedExpression" class="text-xs text-white">
+              {{ getExpressionEmoji(detectedExpression) }} {{ detectedExpression }}
+            </span>
+          </div>
+
           <!-- Three-dot Menu -->
           <div class="relative">
-            <button (click)="toggleMenu(userId)" class="w-6 h-6 leading-6 text-center text-white bg-black bg-opacity-50 rounded-full">⋮</button>
+            <button (click)="toggleMenu(userId)" class="w-6 h-6 leading-6 text-center text-white rounded-full">⋮</button>
             <div *ngIf="menuOpenFor === userId" class="absolute right-0 z-10 w-32 mt-2 text-black bg-white rounded shadow bottom-8">
               <button (click)="toggleRemoteVideo(userId)" class="block w-full px-4 py-2 text-left hover:bg-gray-100">
                 {{ remoteVideoHidden[userId] ? 'Show Video' : 'Hide Video' }}
@@ -96,5 +117,11 @@
     <button (click)="leaveMeeting()" class="px-4 py-2 text-white bg-red-600 rounded hover:bg-red-700">
       Leave
     </button>
+  </div>
+
+  <!-- Face Recognition Popup -->
+  <div *ngIf="faceMismatchDetected" class="fixed z-50 p-4 text-white transform -translate-x-1/2 -translate-y-1/2 bg-red-600 top-1/2 left-1/2 rounded-xl">
+    <p>Face mismatch detected! You are not authorized to join.</p>
+    <button (click)="closePopup()" class="px-4 py-2 text-black bg-white rounded-lg">Close</button>
   </div>
 </div>
