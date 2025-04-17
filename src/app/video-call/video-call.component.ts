@@ -1,34 +1,38 @@
-import { Component, OnInit, ViewChild, ElementRef } from "@angular/core";
-import { ActivatedRoute } from "@angular/router";
-import { VideoCallService } from "../services/video-call.service";
+
+import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { VideoCallService } from '../services/video-call.service';
 import { ToastrService } from 'ngx-toastr'; // Import ToastrService
 import { FaceExpressionService } from '../services/face-expression.service';
+
 @Component({
-  selector: "app-video-call",
-  templateUrl: "./video-call.component.html",
-  styleUrls: ["./video-call.component.css"],
+  selector: 'app-video-call',
+  templateUrl: './video-call.component.html',
+  styleUrls: ['./video-call.component.css'],
 })
 export class VideoCallComponent implements OnInit {
   meetingId!: string;
   localStream!: MediaStream;
-  @ViewChild('localVideo', { static: true }) localVideo!: ElementRef<HTMLVideoElement>;
+  @ViewChild('localVideo', { static: true })
+  localVideo!: ElementRef<HTMLVideoElement>;
   remoteStreams: { [key: string]: MediaStream } = {};
   remoteVideoHidden: { [key: string]: boolean } = {}; // NEW: for remote video visibility toggle
   participants: string[] = [];
-  signalStrengths: { [key: string]: number } = {};  // Track signal strength for each participant
-  connectionStatus: string = "Connecting...";
-  searchQuery: string = "";
+  signalStrengths: { [key: string]: number } = {}; // Track signal strength for each participant
+  connectionStatus: string = 'Connecting...';
+  searchQuery: string = '';
   videoEnabled: boolean = true;
   audioEnabled: boolean = true;
   showParticipants: boolean = false;
-  enlargedVideoUserId: string | null = null;
-  isDarkMode = false;
   detectedExpression: string = '';
   menuOpenFor: string | null = null; // NEW: Track open menu userId
   localVideoHidden = false;
   referenceImage: HTMLImageElement | null = null;
   faceMismatchDetected: boolean = false;
   showPopup: boolean = false;
+  isRecording = false;
+  mediaRecorder: any;
+  recordedChunks: any[] = [];
 
   constructor(
     private route: ActivatedRoute,
@@ -37,19 +41,17 @@ export class VideoCallComponent implements OnInit {
     private faceService: FaceExpressionService
   ) {}
 
-
   async ngAfterViewInit() {
     await this.faceService.loadModels();
     this.startExpressionDetection();
-    this.loadReferenceImage(); 
-    
   }
+
   closePopup() {
     this.showPopup = false;
   }
-  
+
   ngOnInit() {
-    this.meetingId = this.route.snapshot.paramMap.get("meetingId") || "";
+    this.meetingId = this.route.snapshot.paramMap.get('meetingId') || '';
     this.startCall();
 
     this.videoCallService.getParticipantUpdates().subscribe((participants) => {
@@ -62,54 +64,96 @@ export class VideoCallComponent implements OnInit {
       });
     });
 
-    this.simulateSignalStrength(); // Optional: for signal simulation
-    
+    this.simulateSignalStrength(); 
   }
+
   async loadReferenceImage() {
     this.referenceImage = new Image();
     this.referenceImage.src = 'assets/images/reference.jpg'; // Path to your reference image
     await this.referenceImage.decode();
   }
-  toggleDarkMode() {
-    this.isDarkMode = !this.isDarkMode;
-    const root = document.documentElement;
-    if (this.isDarkMode) {
-      root.classList.add('dark');
+
+  async toggleScreenRecording() {
+    if (!this.isRecording) {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true
+        });
+
+        this.mediaRecorder = new MediaRecorder(screenStream);
+        this.recordedChunks = [];
+
+        this.mediaRecorder.ondataavailable = (event: any) => {
+          if (event.data.size > 0) {
+            this.recordedChunks.push(event.data);
+          }
+        };
+
+        this.mediaRecorder.onstop = () => {
+          const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'meeting-recording.webm';
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        this.mediaRecorder.start();
+        this.isRecording = true;
+      } catch (err) {
+        console.error('Error starting screen recording:', err);
+      }
     } else {
-      root.classList.remove('dark');
+      this.mediaRecorder.stop();
+      this.isRecording = false;
     }
   }
+
+
+
   toggleLocalVideo() {
     this.localVideoHidden = !this.localVideoHidden;
   }
+
   startCall() {
     this.videoCallService
       .initLocalStream()
       .then((stream) => {
         this.localStream = stream;
         this.localVideo.nativeElement.srcObject = this.localStream;
+
+        //  Wait until video metadata is ready (video can play)
+        this.localVideo.nativeElement.onloadedmetadata = async () => {
+          await this.faceService.loadModels(); // Load face detection models
+          this.loadReferenceImage(); // Load the reference image
+          this.startExpressionDetection(); // Start face recognition
+        };
+
+        // Join room
         this.videoCallService.joinRoom(this.meetingId);
 
-        this.videoCallService.getRemoteStreamsObservable().subscribe((streams) => {
-          this.remoteStreams = streams;
+        // Listen for other participants' streams
+        this.videoCallService
+          .getRemoteStreamsObservable()
+          .subscribe((streams) => {
+            this.remoteStreams = streams;
 
-          Object.keys(this.remoteStreams).forEach((userId) => {
-            if (!this.signalStrengths[userId]) {
-              this.signalStrengths[userId] = 100;
-            }
+            Object.keys(this.remoteStreams).forEach((userId) => {
+              if (!this.signalStrengths[userId]) {
+                this.signalStrengths[userId] = 100;
+              }
+            });
           });
-        });
 
-        this.connectionStatus = "Connected";
+        this.connectionStatus = 'Connected';
       })
       .catch((error) =>
-        console.error("Error accessing camera/microphone:", error)
+        console.error('Error accessing camera/microphone:', error)
       );
   }
 
-  enlargeVideo(userId: string) {
-    this.enlargedVideoUserId = this.enlargedVideoUserId === userId ? null : userId;
-  }
 
   getRemoteStreamKeys(): string[] {
     return Object.keys(this.remoteStreams);
@@ -137,18 +181,25 @@ export class VideoCallComponent implements OnInit {
     }
   }
 
+  // Meeting Link Generation - NEW CODE START
   copyMeetingLink() {
     const meetingLink = `${window.location.origin}/video-call/${this.meetingId}`;
-    navigator.clipboard.writeText(meetingLink).then(() => {
-      this.toastr.success('Meeting link copied to clipboard!', 'Success');
-    }).catch(err => {
-      this.toastr.error('Failed to copy link.', 'Error');
-      console.error("Failed to copy link: ", err);
-    });
+    navigator.clipboard
+      .writeText(meetingLink)
+      .then(() => {
+        this.toastr.success('Meeting link copied to clipboard!', 'Success');
+      })
+      .catch((err) => {
+        this.toastr.error('Failed to copy link.', 'Error');
+        console.error('Failed to copy link: ', err);
+      });
   }
+  // Meeting Link Generation - NEW CODE END
 
   filteredParticipants(): string[] {
-    return this.participants.filter(user => user.toLowerCase().includes(this.searchQuery.toLowerCase()));
+    return this.participants.filter((user) =>
+      user.toLowerCase().includes(this.searchQuery.toLowerCase())
+    );
   }
 
   toggleParticipants() {
@@ -157,17 +208,21 @@ export class VideoCallComponent implements OnInit {
 
   toggleVideo() {
     this.videoEnabled = !this.videoEnabled;
-    this.localStream.getVideoTracks().forEach(track => track.enabled = this.videoEnabled);
+    this.localStream
+      .getVideoTracks()
+      .forEach((track) => (track.enabled = this.videoEnabled));
     if (this.videoEnabled) {
       this.toastr.info('Video enabled', 'Info');
     } else {
       this.toastr.info('Video disabled', 'Info');
     }
   }
-
+  
   toggleAudio() {
     this.audioEnabled = !this.audioEnabled;
-    this.localStream.getAudioTracks().forEach(track => track.enabled = this.audioEnabled);
+    this.localStream
+      .getAudioTracks()
+      .forEach((track) => (track.enabled = this.audioEnabled));
     if (this.audioEnabled) {
       this.toastr.info('Audio unmuted', 'Info');
     } else {
@@ -183,7 +238,7 @@ export class VideoCallComponent implements OnInit {
   leaveMeeting() {
     this.videoCallService.leaveMeeting();
     this.toastr.success('You have left the meeting.', 'Goodbye');
-    window.location.href = "/";
+    window.location.href = '/';
   }
 
   showTestToastr() {
@@ -207,28 +262,42 @@ export class VideoCallComponent implements OnInit {
   // NEW: Toggle visibility of a specific remote user's video
   toggleRemoteVideo(userId: string) {
     this.remoteVideoHidden[userId] = !this.remoteVideoHidden[userId];
-    this.toastr.info(`${this.remoteVideoHidden[userId] ? 'Hiding' : 'Showing'} ${userId}'s video`, 'Info');
+    this.toastr.info(
+      `${
+        this.remoteVideoHidden[userId] ? 'Hiding' : 'Showing'
+      } ${userId}'s video`,
+      'Info'
+    );
   }
+
   startExpressionDetection() {
     const videoElement = this.localVideo.nativeElement;
-  
+
     setInterval(async () => {
-      const expressions = await this.faceService.detectExpressions(videoElement);
+      const expressions = await this.faceService.detectExpressions(
+        videoElement
+      );
       if (expressions) {
-        const topExpression = Object.entries(expressions)
-          .sort((a, b) => b[1] - a[1])[0][0];
-  
+        const topExpression = Object.entries(expressions).sort(
+          (a, b) => b[1] - a[1]
+        )[0][0];
+
         this.detectedExpression = topExpression; // Set it to display in UI
         console.log('Detected expression:', topExpression);
-        const isFaceRecognized = await this.compareFaceWithReference(videoElement);
+        const isFaceRecognized = await this.compareFaceWithReference(
+          videoElement
+        );
         if (isFaceRecognized) {
           console.log('Face recognized');
         } else {
           console.log('Face not recognized');
+          this.faceMismatchDetected = true; // Track face mismatch
+          this.showPopup = true; // Show the popup when face mismatch is detected
         }
       }
     }, 5000); // Detect face expression and recognize face every 5 seconds
   }
+
   getExpressionEmoji(expression: string): string {
     const emojiMap: { [key: string]: string } = {
       happy: '😊',
@@ -237,14 +306,20 @@ export class VideoCallComponent implements OnInit {
       fearful: '😨',
       disgusted: '🤢',
       surprised: '😲',
-      neutral: '😐'
+      neutral: '😐',
     };
     return emojiMap[expression] || '';
   }
-  async compareFaceWithReference(videoElement: HTMLVideoElement): Promise<boolean> {
+
+  async compareFaceWithReference(
+    videoElement: HTMLVideoElement
+  ): Promise<boolean> {
     if (!this.referenceImage) return false;
-  
-    const result = await this.faceService.compareFace(videoElement, this.referenceImage);
+
+    const result = await this.faceService.compareFace(
+      videoElement,
+      this.referenceImage
+    );
     return result;
   }
 }

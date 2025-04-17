@@ -1,0 +1,6 @@
+.bg-tomato-600 {
+  background-color: #e74c3c; /* Tomato Red */
+}
+.hover\:bg-tomato-700 {
+  background-color: #c0392b; /* Darker Tomato */
+}
