@@ -1,4 +1,3 @@
-
 import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { VideoCallService } from '../services/video-call.service';
@@ -8,11 +7,14 @@ import { FaceExpressionService } from '../services/face-expression.service';
 @Component({
   selector: 'app-video-call',
   templateUrl: './video-call.component.html',
+
   styleUrls: ['./video-call.component.css'],
 })
 export class VideoCallComponent implements OnInit {
   meetingId!: string;
   localStream!: MediaStream;
+  captionsEnabled = true;
+  captions: { [key: string]: string } = {};
   @ViewChild('localVideo', { static: true })
   localVideo!: ElementRef<HTMLVideoElement>;
   remoteStreams: { [key: string]: MediaStream } = {};
@@ -33,6 +35,8 @@ export class VideoCallComponent implements OnInit {
   isRecording = false;
   mediaRecorder: any;
   recordedChunks: any[] = [];
+  showSentimentModal: boolean = false;
+  currentExpression: string = 'Neutral'; // default
 
   constructor(
     private route: ActivatedRoute,
@@ -49,7 +53,11 @@ export class VideoCallComponent implements OnInit {
   closePopup() {
     this.showPopup = false;
   }
-
+  sentimentData: { mood: string; faceExpression: string; summary: string } = {
+    mood: '',
+    faceExpression: '',
+    summary: '',
+  };
   ngOnInit() {
     this.meetingId = this.route.snapshot.paramMap.get('meetingId') || '';
     this.startCall();
@@ -64,7 +72,7 @@ export class VideoCallComponent implements OnInit {
       });
     });
 
-    this.simulateSignalStrength(); 
+    this.simulateSignalStrength();
   }
 
   async loadReferenceImage() {
@@ -72,13 +80,35 @@ export class VideoCallComponent implements OnInit {
     this.referenceImage.src = 'assets/images/reference.jpg'; // Path to your reference image
     await this.referenceImage.decode();
   }
+  toggleCaptions() {
+    this.captionsEnabled = !this.captionsEnabled;
+  }
+  startCaptioning() {
+    const recognition = new (window as any).webkitSpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((r: any) => r[0].transcript)
+        .join('');
+      this.captions['local'] = transcript;
+    };
+
+    recognition.onerror = (err: any) => {
+      console.error('Speech recognition error:', err);
+    };
+
+    recognition.start();
+  }
 
   async toggleScreenRecording() {
     if (!this.isRecording) {
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
-          audio: true
+          audio: true,
         });
 
         this.mediaRecorder = new MediaRecorder(screenStream);
@@ -110,8 +140,6 @@ export class VideoCallComponent implements OnInit {
       this.isRecording = false;
     }
   }
-
-
 
   toggleLocalVideo() {
     this.localVideoHidden = !this.localVideoHidden;
@@ -153,7 +181,6 @@ export class VideoCallComponent implements OnInit {
         console.error('Error accessing camera/microphone:', error)
       );
   }
-
 
   getRemoteStreamKeys(): string[] {
     return Object.keys(this.remoteStreams);
@@ -217,7 +244,7 @@ export class VideoCallComponent implements OnInit {
       this.toastr.info('Video disabled', 'Info');
     }
   }
-  
+
   toggleAudio() {
     this.audioEnabled = !this.audioEnabled;
     this.localStream
@@ -238,9 +265,70 @@ export class VideoCallComponent implements OnInit {
   leaveMeeting() {
     this.videoCallService.leaveMeeting();
     this.toastr.success('You have left the meeting.', 'Goodbye');
+
+    this.sentimentData = this.analyzeSentiment(); // analyze mood
+    this.showSentimentModal = true; // show modal
+  }
+
+  closeSentimentModal(): void {
+    this.showSentimentModal = false;
+
+    // Redirect AFTER user closes modal
     window.location.href = '/';
   }
 
+  analyzeSentiment(): {
+    mood: string;
+    faceExpression: string;
+    summary: string;
+  } {
+    // Mapping detected expression to sentiment
+    const expressionToSentimentMap: Record<
+      string,
+      { mood: string; summary: string }
+    > = {
+      happy: {
+        mood: 'Positive',
+        summary: 'You appear to be in a positive mood!',
+      },
+      sad: {
+        mood: 'Negative',
+        summary: 'You seem a bit down. Hope everything is okay!',
+      },
+      angry: {
+        mood: 'Negative',
+        summary: "You seem frustrated. Let's try to stay calm.",
+      },
+      surprised: {
+        mood: 'Neutral',
+        summary: 'You look surprised! What happened?',
+      },
+      neutral: {
+        mood: 'Neutral',
+        summary: 'You seem calm and composed.',
+      },
+      fearful: {
+        mood: 'Negative',
+        summary: 'You seem a bit anxious or fearful. Everything alright?',
+      },
+      disgusted: {
+        mood: 'Negative',
+        summary: "You appear to be disgusted. Let's talk about it!",
+      },
+    };
+
+    const expression = this.detectedExpression.toLowerCase(); // use detected expression
+    const { mood, summary } = expressionToSentimentMap[expression] || {
+      mood: 'Neutral',
+      summary: 'Your mood is unclear right now.',
+    };
+
+    return {
+      mood,
+      faceExpression: expression,
+      summary,
+    };
+  }
   showTestToastr() {
     this.toastr.success('This is a test toast!', 'Test');
   }
@@ -258,7 +346,6 @@ export class VideoCallComponent implements OnInit {
   toggleMenu(userId: string) {
     this.menuOpenFor = this.menuOpenFor === userId ? null : userId;
   }
-
   // NEW: Toggle visibility of a specific remote user's video
   toggleRemoteVideo(userId: string) {
     this.remoteVideoHidden[userId] = !this.remoteVideoHidden[userId];
@@ -284,6 +371,11 @@ export class VideoCallComponent implements OnInit {
 
         this.detectedExpression = topExpression; // Set it to display in UI
         console.log('Detected expression:', topExpression);
+
+        // Analyze and update sentiment based on detected expression
+        const sentiment = this.analyzeSentiment();
+        console.log('Sentiment:', sentiment.mood, sentiment.summary);
+
         const isFaceRecognized = await this.compareFaceWithReference(
           videoElement
         );
@@ -295,9 +387,8 @@ export class VideoCallComponent implements OnInit {
           this.showPopup = true; // Show the popup when face mismatch is detected
         }
       }
-    }, 5000); // Detect face expression and recognize face every 5 seconds
+    }, 5000);
   }
-
   getExpressionEmoji(expression: string): string {
     const emojiMap: { [key: string]: string } = {
       happy: '😊',

@@ -79,17 +79,18 @@ export class FaceAuthComponent implements OnInit {
         return;
       }
 
-      const result = await this.faceAuthService.autoVerifyFace(detections[0].descriptor);
+      const result = await this.faceAuthService.autoVerifyFace(
+        detections[0].descriptor
+      );
 
       if (result.matched) {
         this.result = `Welcome ${result.label}`;
         this.toastr.success(`Welcome ${result.label}`, 'Face Matched');
-        this.router.navigate(['/video-call', 'test123']);
+        this.router.navigate(['/video-call', '']);
       } else {
         this.result = 'Face not matched';
         this.toastr.error('Access Denied', 'Verification Failed');
       }
-
     } catch (error) {
       console.error('Verification error:', error);
       this.result = 'Verification failed';

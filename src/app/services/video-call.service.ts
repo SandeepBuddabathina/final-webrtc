@@ -1,7 +1,7 @@
-
 import { Injectable } from '@angular/core';
 import { io, Socket } from 'socket.io-client';
 import { BehaviorSubject, Observable } from 'rxjs';
+import { FaceExpressionService } from './face-expression.service';
 
 @Injectable({
   providedIn: 'root',
@@ -10,10 +10,18 @@ export class VideoCallService {
   private socket: Socket;
   private localStream: MediaStream | null = null;
   private peerConnections: { [key: string]: RTCPeerConnection } = {};
-  private remoteStreams = new BehaviorSubject<{ [key: string]: MediaStream }>({});
+  private remoteStreams = new BehaviorSubject<{ [key: string]: MediaStream }>(
+    {}
+  );
   private participants = new BehaviorSubject<string[]>([]);
 
-  constructor() {
+  //  Expression and audio confidence tracking
+  private expressionAudioSnapshots: {
+    [userId: string]: { timestamp: number; expression: any; volume: number }[];
+  } = {};
+
+  constructor(private faceService: FaceExpressionService) {
+    //  Inject FaceExpressionService
     this.socket = io('https://back-web-production-9b88.up.railway.app');
 
     this.socket.on('user-joined', (userId: string) => {
@@ -28,6 +36,7 @@ export class VideoCallService {
     );
 
     this.socket.on('user-left', (userId) => {
+      this.analyzeUserOnLeave(userId); // 👈 Perform analysis when user leaves
       this.removeUser(userId);
       this.participants.next(
         this.participants.value.filter((id) => id !== userId)
@@ -47,15 +56,14 @@ export class VideoCallService {
     this.socket.emit('join-room', roomId);
   }
 
-  /** Method to generate a unique meeting link */
   generateMeetingLink(): string {
     const roomId = this.generateRoomId();
-    this.socket.emit('create-room', roomId);  // Emit to server to create a room
+    this.socket.emit('create-room', roomId);
     return roomId;
   }
 
   private generateRoomId(): string {
-    return 'room_' + Math.random().toString(36).substring(2, 15); // Random unique room ID
+    return 'room_' + Math.random().toString(36).substring(2, 15);
   }
 
   private async createOffer(userId: string): Promise<void> {
@@ -122,6 +130,9 @@ export class VideoCallService {
         ...this.remoteStreams.value,
         [userId]: event.streams[0],
       });
+
+      //  Start monitoring expression and volume
+      this.monitorFaceAndAudio(userId, event.streams[0]);
     };
 
     this.localStream!.getTracks().forEach((track) =>
@@ -149,7 +160,6 @@ export class VideoCallService {
     return this.participants.asObservable();
   }
 
-  /** ✅ Share Screen and update tracks */
   async shareScreen(): Promise<void> {
     const screenStream = await (navigator.mediaDevices as any).getDisplayMedia({
       video: true,
@@ -196,7 +206,6 @@ export class VideoCallService {
     };
   }
 
-  /** ✅ Leave Meeting and cleanup */
   leaveMeeting(): void {
     for (const userId in this.peerConnections) {
       this.peerConnections[userId].close();
@@ -205,5 +214,75 @@ export class VideoCallService {
 
     this.localStream?.getTracks().forEach((track) => track.stop());
     this.socket.disconnect();
+  }
+
+  //  ANALYSIS FUNCTIONALITY SECTION
+
+  private monitorFaceAndAudio(userId: string, stream: MediaStream): void {
+    const audioCtx = new AudioContext();
+    const analyser = audioCtx.createAnalyser();
+    const source = audioCtx.createMediaStreamSource(stream);
+    source.connect(analyser);
+    analyser.fftSize = 256;
+    const faceVideo = document.createElement('video');
+    faceVideo.srcObject = stream;
+    faceVideo.play();
+
+    const faceCheck = () => {
+      this.faceService.detectExpressions(faceVideo).then((expression) => {
+        const volume = this.getAudioVolume(analyser);
+        if (!this.expressionAudioSnapshots[userId]) {
+          this.expressionAudioSnapshots[userId] = [];
+        }
+
+        this.expressionAudioSnapshots[userId].push({
+          timestamp: Date.now(),
+          expression,
+          volume,
+        });
+      });
+    };
+
+    setInterval(faceCheck, 5000); // Check every 5 seconds
+  }
+
+  private getAudioVolume(analyser: AnalyserNode): number {
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+    const avg = data.reduce((a, b) => a + b, 0) / data.length;
+    return avg / 255; // Normalize to 0-1
+  }
+
+  private analyzeUserOnLeave(userId: string): void {
+    const data = this.expressionAudioSnapshots[userId];
+    if (!data || data.length === 0) return;
+
+    let totalVolume = 0;
+    const expressionCounts: { [key: string]: number } = {};
+
+    for (const snapshot of data) {
+      totalVolume += snapshot.volume;
+
+      const mostLikely = Object.entries(
+        snapshot.expression as { [key: string]: number }
+      ).reduce((a, b) => (a[1] > b[1] ? a : b));
+
+      const emotion = mostLikely[0];
+
+      if (!expressionCounts[emotion]) {
+        expressionCounts[emotion] = 0;
+      }
+      expressionCounts[emotion]++;
+    }
+
+    const averageVolume = totalVolume / data.length;
+    const topExpression = Object.entries(expressionCounts).sort(
+      (a, b) => b[1] - a[1]
+    )[0][0];
+    const confidenceScore = Math.round(averageVolume * 100);
+
+    console.log(` Summary for ${userId}:`);
+    console.log(` Dominant Emotion: ${topExpression}`);
+    console.log(` Confidence Score: ${confidenceScore}`);
   }
 }

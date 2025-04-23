@@ -7,7 +7,7 @@ import * as faceapi from 'face-api.js';
 export class FaceExpressionService {
   // Load face-api.js models
   async loadModels(): Promise<void> {
-    const MODEL_URL = '/assets/models'; // Make sure to place models here
+    const MODEL_URL = '/assets/models';
 
     await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
     await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);

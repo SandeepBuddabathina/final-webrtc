@@ -18,10 +18,12 @@
     "@angular/platform-browser": "^16.2.0",
     "@angular/platform-browser-dynamic": "^16.2.0",
     "@angular/router": "^16.2.0",
+    "@fortawesome/fontawesome-free": "^6.7.2",
     "@types/webgl2": "^0.0.11",
     "face-api.js": "^0.22.2",
     "ngx-toastr": "^19.0.0",
     "rxjs": "~7.8.0",
+    "sentiment": "^5.0.2",
     "socket.io-client": "^4.8.1",
     "tslib": "^2.3.0",
     "zone.js": "~0.13.0"

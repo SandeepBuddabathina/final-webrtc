@@ -36,25 +36,6 @@
             <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
             <div class="text-xs font-medium text-green-400">You (Live)</div>
           </div>
-          <div>
-            <button
-              (click)="toggleMenu('local')"
-              class="w-6 h-6 leading-6 text-center text-white rounded-full"
-            >
-              ⋮
-            </button>
-            <div
-              *ngIf="menuOpenFor === 'local'"
-              class="absolute right-0 z-10 w-32 mt-2 text-black bg-white rounded shadow bottom-8"
-            >
-              <button
-                (click)="toggleLocalVideo()"
-                class="block w-full px-4 py-2 text-left hover:bg-gray-100"
-              >
-                {{ localVideoHidden ? "Show Video" : "Hide Video" }}
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -108,27 +89,6 @@
               {{ detectedExpression }}
             </span>
           </div>
-
-          <!-- Three-dot Menu -->
-          <div class="relative">
-            <button
-              (click)="toggleMenu(userId)"
-              class="w-6 h-6 leading-6 text-center text-white rounded-full"
-            >
-              ⋮
-            </button>
-            <div
-              *ngIf="menuOpenFor === userId"
-              class="absolute right-0 z-10 w-32 mt-2 text-black bg-white rounded shadow bottom-8"
-            >
-              <button
-                (click)="toggleRemoteVideo(userId)"
-                class="block w-full px-4 py-2 text-left hover:bg-gray-100"
-              >
-                {{ remoteVideoHidden[userId] ? "Show Video" : "Hide Video" }}
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -160,50 +120,108 @@
   </div>
 
   <!-- Controls Bar -->
+
   <div
-    class="fixed flex gap-3 p-3 transform -translate-x-1/2 bg-white border rounded-full shadow-lg bottom-4 left-1/2"
+    class="fixed flex gap-3 p-3 transform -translate-x-1/2 bg-gray-400 border rounded-full shadow-lg bottom-4 left-2/4"
   >
+    <!-- Video -->
     <button
       (click)="toggleVideo()"
-      class="px-4 py-2 text-white rounded bg-violet-600 hover:bg-violet-700"
+      class="p-3 rounded-full bg-[#e8f0fe] hover:bg-[#d7d9d7]"
+      title=" Video"
     >
-      {{ videoEnabled ? " Turn Off Video" : " Turn On Video" }}
+      <i
+        class="fas"
+        [ngClass]="
+          videoEnabled
+            ? 'fa-video text-[#000]'
+            : 'fa-video-slash text-[#4a4a4a]'
+        "
+      ></i>
     </button>
+
+    <!-- Audio -->
     <button
       (click)="toggleAudio()"
-      class="px-4 py-2 text-white rounded bg-violet-600 hover:bg-violet-700"
+      class="p-3 rounded-full bg-[#e8f0fe] hover:bg-[#d7d9d7]"
+      title=" Audio"
     >
-      {{ audioEnabled ? " Mute" : " Unmute" }}
+      <i
+        class="fas"
+        [ngClass]="
+          audioEnabled
+            ? 'fa-microphone text-[#000]'
+            : 'fa-microphone-slash text-[#4a4a4a]'
+        "
+      ></i>
     </button>
+
+    <!-- Screen Share -->
     <button
       (click)="shareScreen()"
-      class="px-4 py-2 text-white rounded bg-violet-600 hover:bg-violet-700"
+      class="p-3 rounded-full bg-[#e8f0fe] hover:bg-[#d7d9d7]"
+      title="Share Screen"
     >
-      Share Screen
+      <i class="fas fa-desktop text-[#000]"></i>
     </button>
-    <button
-      (click)="toggleParticipants()"
-      class="px-4 py-2 text-white rounded bg-violet-600 hover:bg-violet-700"
-    >
-      Participants
-    </button>
-    <button
-  (click)="toggleScreenRecording()"
-  class="px-4 py-2 text-white rounded bg-violet-600 hover:bg-violet-700"
->
-  {{ isRecording ? 'Stop Recording' : 'Start Recording' }}
-</button>
 
+    <!-- Participants -->
+    <!-- <button
+  (click)="toggleParticipants()"
+  class="p-3 rounded-full bg-[#e8f0fe] hover:bg-[#d7d9d7]"
+  title="Participants"
+>
+  <i class="fas fa-user-group text-[#000]"></i>
+</button> -->
+
+    <!-- Recording -->
+    <button
+      (click)="toggleScreenRecording()"
+      class="p-3 rounded-full bg-[#e8f0fe] hover:bg-[#d7d9d7]"
+      title=" Recording"
+    >
+      <i
+        class="fas"
+        [ngClass]="
+          isRecording
+            ? 'fa-stop-circle text-[#000]'
+            : 'fa-record-vinyl text-[#000]'
+        "
+      ></i>
+    </button>
+
+    <!-- Leave -->
     <button
       (click)="leaveMeeting()"
-      class="px-4 py-2 text-white bg-red-600 rounded hover:bg-red-700"
+      class="p-3 bg-[#d93025] hover:bg-[#c5221f] text-white rounded-full"
+      title="Leave"
     >
-      Leave
+      <i class="fas fa-phone-slash"></i>
     </button>
-
-
   </div>
 
-  <!-- Face Recognition Popup -->
-
+  <!-- Modal for Sentiment Analysis -->
+  <div
+    *ngIf="showSentimentModal"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+  >
+    <div class="p-6 bg-white rounded-lg shadow-lg">
+      <h2 class="text-lg font-bold">Sentiment Analysis</h2>
+      <p class="text-gray-800">
+        Mood: <strong>{{ sentimentData.mood }}</strong>
+      </p>
+      <p class="text-gray-800">
+        Expression: <strong>{{ sentimentData.faceExpression }}</strong>
+      </p>
+      <p class="mt-2 text-sm italic text-gray-700">
+        "{{ sentimentData.summary }}"
+      </p>
+      <button
+        (click)="closeSentimentModal()"
+        class="px-4 py-2 mt-4 text-white bg-red-500 rounded"
+      >
+        Close
+      </button>
+    </div>
+  </div>
 </div>
