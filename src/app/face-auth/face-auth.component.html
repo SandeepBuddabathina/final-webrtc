@@ -26,24 +26,17 @@
     </div>
 
     <!-- Buttons Container (Side by side) -->
-    <div class="flex justify-between w-full mt-6">
+    <div class="flex justify-center w-full mt-6">
       <!-- Join Now Button -->
       <button
         (click)="onJoinNow()"
-        class="w-5/12 px-6 py-2 font-semibold text-white transition duration-300 bg-violet-600 rounded-xl hover:bg-violet-700"
+        class="justify-center w-5/12 px-6 py-2 font-semibold text-white transition duration-300 bg-violet-600 rounded-xl hover:bg-violet-700 "
         [disabled]="isLoading"
       >
         Join Now
       </button>
 
       <!-- Leave Call Button (Tomato Color) -->
-      <button
-        (click)="onLeaveCall()"
-        class="w-5/12 px-6 py-2 font-semibold text-white transition duration-300 bg-tomato-600 rounded-xl hover:bg-tomato-700"
-        [disabled]="!isLoading"
-      >
-        Leave Call
-      </button>
     </div>
 
     <!-- Result Text below the buttons -->
