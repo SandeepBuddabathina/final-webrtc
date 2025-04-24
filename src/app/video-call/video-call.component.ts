@@ -3,13 +3,20 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { VideoCallService } from '../services/video-call.service';
 import { ToastrService } from 'ngx-toastr';
 import { FaceExpressionService } from '../services/face-expression.service';
+import { ChatService } from '../services/chat.service'; 
+import { io, Socket } from 'socket.io-client';
 
+interface Message {
+  sender: string;  // User sending the message
+  text: string;    // The message text
+}
 @Component({
   selector: 'app-video-call',
   templateUrl: './video-call.component.html',
   styleUrls: ['./video-call.component.css'],
 })
 export class VideoCallComponent implements OnInit {
+  socket!: Socket;
   meetingId!: string;
   localStream!: MediaStream;
   captionsEnabled = true;
@@ -36,7 +43,12 @@ export class VideoCallComponent implements OnInit {
   recordedChunks: any[] = [];
   showSentimentModal: boolean = false;
   currentExpression: string = 'Neutral';
-
+  chatOpen = false;
+  message: string = '';  // The message input value
+  isChatOpen: boolean = false;  // Control the visibility of the chat panel
+  chatMessage: string = '';     // The chat message input value
+  username = localStorage.getItem('username') || 'Me';
+  messages: { sender: string, text: string }[] = [];  // Store chat messages
   sentimentData: { mood: string; faceExpression: string; summary: string } = {
     mood: '',
     faceExpression: '',
@@ -48,7 +60,8 @@ export class VideoCallComponent implements OnInit {
     private router: Router,
     private videoCallService: VideoCallService,
     private toastr: ToastrService,
-    private faceService: FaceExpressionService
+    private faceService: FaceExpressionService,
+    private chatService: ChatService
   ) {}
 
   async ngOnInit() {
@@ -62,7 +75,9 @@ export class VideoCallComponent implements OnInit {
       this.router.navigate(['/video-call', newRoomId]);
       return; // Stop execution until rerouted
     }
-
+    this.chatService.receiveMessage((message) => {
+      this.messages.push(message);
+    });
     this.meetingId = paramId;
     this.startCall();
 
@@ -74,7 +89,11 @@ export class VideoCallComponent implements OnInit {
         }
       });
     });
-
+    this.socket.on('receive-message', (msg: { sender: string; text: string }) => {
+      if (msg.sender !== this.username) {
+        this.messages.push(msg);
+      }
+    });
     this.simulateSignalStrength();
   }
 
@@ -404,4 +423,33 @@ export class VideoCallComponent implements OnInit {
   showTestToastr() {
     this.toastr.success('This is a test toast!', 'Test');
   }
+  toggleChat(): void {
+    this.chatOpen = !this.chatOpen;
+  }
+  
+  closeChat() {
+    this.isChatOpen = false;
+  }
+  sendMessage(): void {
+    if (this.message.trim() === '') return;
+
+    const sender = 'User1';  // You can dynamically set the sender name
+    this.chatService.sendMessage(sender, this.message);
+
+    this.message = '';  // Clear input after sending
+  }
+  
+  // sendMessage(): void {
+  //   if (this.chatMessage.trim()) {
+  //     const newMessage: Message = {
+  //       sender: this.username,
+  //       text: this.chatMessage.trim()
+  //     };
+  //     this.chatService.sendMessage(newMessage);
+  //     this.messages.push(newMessage); // Display own message instantly
+  //     this.chatMessage = '';
+  //   }
+  // }
+  
+  
 }
