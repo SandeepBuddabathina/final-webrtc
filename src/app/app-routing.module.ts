@@ -8,6 +8,7 @@ const routes: Routes = [
   { path: '', redirectTo: '/face-auth', pathMatch: 'full' },
   { path: 'face-auth', component: FaceAuthComponent },
   { path: 'video-call/:roomId', component: VideoCallComponent },
+
 ];
 
 @NgModule({

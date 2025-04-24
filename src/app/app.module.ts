@@ -8,10 +8,12 @@ import { AppComponent } from './app.component';
 import { VideoCallComponent } from './video-call/video-call.component';
 import { HttpClientModule } from '@angular/common/http';
 
+
 @NgModule({
   declarations: [
     AppComponent,
-    VideoCallComponent
+    VideoCallComponent,
+
   ],
   imports: [
     BrowserModule,
