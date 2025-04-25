@@ -3,13 +3,14 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { VideoCallService } from '../services/video-call.service';
 import { ToastrService } from 'ngx-toastr';
 import { FaceExpressionService } from '../services/face-expression.service';
-import { ChatService } from '../services/chat.service'; 
+import { ChatService } from '../services/chat.service';
 import { io, Socket } from 'socket.io-client';
 
 interface Message {
-  sender: string;  // User sending the message
-  text: string;    // The message text
+  sender: string;
+  text: string;
 }
+
 @Component({
   selector: 'app-video-call',
   templateUrl: './video-call.component.html',
@@ -17,6 +18,10 @@ interface Message {
 })
 export class VideoCallComponent implements OnInit {
   socket!: Socket;
+  username: string =
+    localStorage.getItem('username') ??
+    localStorage.getItem('name') ??
+    'Anonymous';
   meetingId!: string;
   localStream!: MediaStream;
   captionsEnabled = true;
@@ -44,11 +49,10 @@ export class VideoCallComponent implements OnInit {
   showSentimentModal: boolean = false;
   currentExpression: string = 'Neutral';
   chatOpen = false;
-  message: string = '';  // The message input value
-  isChatOpen: boolean = false;  // Control the visibility of the chat panel
-  chatMessage: string = '';     // The chat message input value
-  username = localStorage.getItem('username') || 'Me';
-  messages: { sender: string, text: string }[] = [];  // Store chat messages
+  message: string = ''; // The message input value
+  isChatOpen: boolean = false; // Control the visibility of the chat panel
+  chatMessage: string = ''; // The chat message input value
+  messages: { sender: string; text: string }[] = []; // Store chat messages
   sentimentData: { mood: string; faceExpression: string; summary: string } = {
     mood: '',
     faceExpression: '',
@@ -65,19 +69,15 @@ export class VideoCallComponent implements OnInit {
   ) {}
 
   async ngOnInit() {
-    // Try to get meeting ID from route
+    this.chatService.receiveMessage((msg) => this.messages.push(msg)); // Listen for incoming chat messages
     const paramId = this.route.snapshot.paramMap.get('roomId');
 
-
     if (!paramId) {
-      // Generate new room ID and navigate to it
       const newRoomId = Math.random().toString(36).substring(2, 8);
       this.router.navigate(['/video-call', newRoomId]);
       return; // Stop execution until rerouted
     }
-    this.chatService.receiveMessage((message) => {
-      this.messages.push(message);
-    });
+
     this.meetingId = paramId;
     this.startCall();
 
@@ -89,11 +89,7 @@ export class VideoCallComponent implements OnInit {
         }
       });
     });
-    this.socket.on('receive-message', (msg: { sender: string; text: string }) => {
-      if (msg.sender !== this.username) {
-        this.messages.push(msg);
-      }
-    });
+
     this.simulateSignalStrength();
   }
 
@@ -117,14 +113,16 @@ export class VideoCallComponent implements OnInit {
 
         this.videoCallService.joinRoom(this.meetingId);
 
-        this.videoCallService.getRemoteStreamsObservable().subscribe((streams) => {
-          this.remoteStreams = streams;
-          Object.keys(this.remoteStreams).forEach((userId) => {
-            if (!this.signalStrengths[userId]) {
-              this.signalStrengths[userId] = 100;
-            }
+        this.videoCallService
+          .getRemoteStreamsObservable()
+          .subscribe((streams) => {
+            this.remoteStreams = streams;
+            Object.keys(this.remoteStreams).forEach((userId) => {
+              if (!this.signalStrengths[userId]) {
+                this.signalStrengths[userId] = 100;
+              }
+            });
           });
-        });
 
         this.connectionStatus = 'Connected';
       })
@@ -141,64 +139,6 @@ export class VideoCallComponent implements OnInit {
 
   toggleCaptions() {
     this.captionsEnabled = !this.captionsEnabled;
-  }
-
-  startCaptioning() {
-    const recognition = new (window as any).webkitSpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((r: any) => r[0].transcript)
-        .join('');
-      this.captions['local'] = transcript;
-    };
-
-    recognition.onerror = (err: any) => {
-      console.error('Speech recognition error:', err);
-    };
-
-    recognition.start();
-  }
-
-  async toggleScreenRecording() {
-    if (!this.isRecording) {
-      try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: true,
-        });
-
-        this.mediaRecorder = new MediaRecorder(screenStream);
-        this.recordedChunks = [];
-
-        this.mediaRecorder.ondataavailable = (event: any) => {
-          if (event.data.size > 0) {
-            this.recordedChunks.push(event.data);
-          }
-        };
-
-        this.mediaRecorder.onstop = () => {
-          const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'meeting-recording.webm';
-          a.click();
-          URL.revokeObjectURL(url);
-        };
-
-        this.mediaRecorder.start();
-        this.isRecording = true;
-      } catch (err) {
-        console.error('Error starting screen recording:', err);
-      }
-    } else {
-      this.mediaRecorder.stop();
-      this.isRecording = false;
-    }
   }
 
   toggleLocalVideo() {
@@ -227,33 +167,37 @@ export class VideoCallComponent implements OnInit {
     const meetingLink = `${window.location.origin}/video-call/${this.meetingId}`;
     navigator.clipboard
       .writeText(meetingLink)
-      .then(() => this.toastr.success('Meeting link copied to clipboard!', 'Success'))
+      .then(() =>
+        this.toastr.success('Meeting link copied to clipboard!', 'Success')
+      )
       .catch((err) => {
         this.toastr.error('Failed to copy link.', 'Error');
         console.error('Failed to copy link: ', err);
       });
   }
-
-  filteredParticipants(): string[] {
-    return this.participants.filter((user) =>
-      user.toLowerCase().includes(this.searchQuery.toLowerCase())
-    );
-  }
-
   toggleParticipants() {
     this.showParticipants = !this.showParticipants;
   }
-
   toggleVideo() {
     this.videoEnabled = !this.videoEnabled;
-    this.localStream.getVideoTracks().forEach((track) => (track.enabled = this.videoEnabled));
-    this.toastr.info(this.videoEnabled ? 'Video enabled' : 'Video disabled', 'Info');
+    this.localStream
+      .getVideoTracks()
+      .forEach((track) => (track.enabled = this.videoEnabled));
+    this.toastr.info(
+      this.videoEnabled ? 'Video enabled' : 'Video disabled',
+      'Info'
+    );
   }
 
   toggleAudio() {
     this.audioEnabled = !this.audioEnabled;
-    this.localStream.getAudioTracks().forEach((track) => (track.enabled = this.audioEnabled));
-    this.toastr.info(this.audioEnabled ? 'Audio unmuted' : 'Audio muted', 'Info');
+    this.localStream
+      .getAudioTracks()
+      .forEach((track) => (track.enabled = this.audioEnabled));
+    this.toastr.info(
+      this.audioEnabled ? 'Audio unmuted' : 'Audio muted',
+      'Info'
+    );
   }
 
   shareScreen() {
@@ -264,7 +208,6 @@ export class VideoCallComponent implements OnInit {
   leaveMeeting() {
     this.videoCallService.leaveMeeting();
     this.toastr.success('You have left the meeting.', 'Goodbye');
-
     this.sentimentData = this.analyzeSentiment();
     this.showSentimentModal = true;
   }
@@ -274,36 +217,19 @@ export class VideoCallComponent implements OnInit {
     window.location.href = '/';
   }
 
-  // analyzeSentiment() {
-  //   const map = {
-  //     happy: { mood: 'Positive', summary: 'You appear to be in a positive mood!' },
-  //     sad: { mood: 'Negative', summary: 'You seem a bit down. Hope everything is okay!' },
-  //     angry: { mood: 'Negative', summary: "You seem frustrated. Let's try to stay calm." },
-  //     surprised: { mood: 'Neutral', summary: 'You look surprised! What happened?' },
-  //     neutral: { mood: 'Neutral', summary: 'You seem calm and composed.' },
-  //     fearful: { mood: 'Negative', summary: 'You seem a bit anxious or fearful.' },
-  //     disgusted: { mood: 'Negative', summary: "You appear to be disgusted. Let's talk about it!" },
-  //   };
-
-  //   const expression = this.detectedExpression.toLowerCase();
-  //   const result = map[expression] || {
-  //     mood: 'Neutral',
-  //     summary: 'Your mood is unclear right now.',
-  //   };
-
-  //   return {
-  //     mood: result.mood,
-  //     faceExpression: expression,
-  //     summary: result.summary,
-  //   };
-  // }
   analyzeSentiment(): {
     mood: string;
     faceExpression: string;
     summary: string;
   } {
     const expressionToSentimentMap: Record<
-      'happy' | 'sad' | 'angry' | 'surprised' | 'neutral' | 'fearful' | 'disgusted',
+      | 'happy'
+      | 'sad'
+      | 'angry'
+      | 'surprised'
+      | 'neutral'
+      | 'fearful'
+      | 'disgusted',
       { mood: string; summary: string }
     > = {
       happy: {
@@ -322,10 +248,7 @@ export class VideoCallComponent implements OnInit {
         mood: 'Neutral',
         summary: 'You look surprised! What happened?',
       },
-      neutral: {
-        mood: 'Neutral',
-        summary: 'You seem calm and composed.',
-      },
+      neutral: { mood: 'Neutral', summary: 'You seem calm and composed.' },
       fearful: {
         mood: 'Negative',
         summary: 'You seem a bit anxious or fearful. Everything alright?',
@@ -335,27 +258,21 @@ export class VideoCallComponent implements OnInit {
         summary: "You appear to be disgusted. Let's talk about it!",
       },
     };
-  
+
     const expression = this.detectedExpression.toLowerCase();
-  
     if (expression in expressionToSentimentMap) {
       const { mood, summary } =
-        expressionToSentimentMap[expression as keyof typeof expressionToSentimentMap];
-  
-      return {
-        mood,
-        faceExpression: expression,
-        summary,
-      };
+        expressionToSentimentMap[
+          expression as keyof typeof expressionToSentimentMap
+        ];
+      return { mood, faceExpression: expression, summary };
     }
-  
     return {
       mood: 'Neutral',
       faceExpression: expression,
       summary: 'Your mood is unclear right now.',
     };
   }
-  
 
   simulateSignalStrength() {
     setInterval(() => {
@@ -372,8 +289,10 @@ export class VideoCallComponent implements OnInit {
   toggleRemoteVideo(userId: string) {
     this.remoteVideoHidden[userId] = !this.remoteVideoHidden[userId];
     this.toastr.info(
-     `${this.remoteVideoHidden[userId] ? 'Hiding' : 'Showing'} ${userId}'s video,
-      'Info'`
+      `${
+        this.remoteVideoHidden[userId] ? 'Hiding' : 'Showing'
+      } ${userId}'s video`,
+      'Info'
     );
   }
 
@@ -381,19 +300,17 @@ export class VideoCallComponent implements OnInit {
     const videoElement = this.localVideo.nativeElement;
 
     setInterval(async () => {
-      const expressions = await this.faceService.detectExpressions(videoElement);
+      const expressions = await this.faceService.detectExpressions(
+        videoElement
+      );
       if (expressions) {
-        const topExpression = Object.entries(expressions).sort((a, b) => b[1] - a[1])[0][0];
+        const topExpression = Object.entries(expressions).sort(
+          (a, b) => b[1] - a[1]
+        )[0][0];
         this.detectedExpression = topExpression;
 
         const sentiment = this.analyzeSentiment();
         console.log('Sentiment:', sentiment.mood, sentiment.summary);
-
-        const isFaceRecognized = await this.compareFaceWithReference(videoElement);
-        if (!isFaceRecognized) {
-          this.faceMismatchDetected = true;
-          this.showPopup = true;
-        }
       }
     }, 5000);
   }
@@ -410,46 +327,67 @@ export class VideoCallComponent implements OnInit {
     };
     return emojiMap[expression] || '';
   }
+  toggleScreenRecording(): void {
+    if (this.isRecording) {
+      this.stopScreenRecording();
+    } else {
+      this.startScreenRecording();
+    }
+  }
 
-  async compareFaceWithReference(videoElement: HTMLVideoElement): Promise<boolean> {
-    if (!this.referenceImage) return false;
-    return await this.faceService.compareFace(videoElement, this.referenceImage);
+  startScreenRecording(): void {
+    const stream = this.localStream;
+    const options = { mimeType: 'video/webm; codecs=vp8' };
+    this.mediaRecorder = new MediaRecorder(stream, options);
+
+    this.mediaRecorder.ondataavailable = (event: BlobEvent) => {
+      this.recordedChunks.push(event.data);
+    };
+
+    this.mediaRecorder.onstop = () => {
+      const recordedBlob = new Blob(this.recordedChunks, {
+        type: 'video/webm',
+      });
+      const videoUrl = URL.createObjectURL(recordedBlob);
+      this.downloadVideo(videoUrl);
+    };
+
+    this.mediaRecorder.start();
+    this.isRecording = true;
+    this.toastr.info('Screen recording started.', 'Info');
+  }
+
+  stopScreenRecording(): void {
+    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      this.mediaRecorder.stop();
+      this.isRecording = false;
+      this.toastr.info('Screen recording stopped.', 'Info');
+    }
+  }
+
+  downloadVideo(videoUrl: string): void {
+    const a = document.createElement('a');
+    a.href = videoUrl;
+    a.download = 'recording.webm';
+    a.click();
   }
 
   closePopup() {
     this.showPopup = false;
   }
 
-  showTestToastr() {
-    this.toastr.success('This is a test toast!', 'Test');
-  }
   toggleChat(): void {
     this.chatOpen = !this.chatOpen;
   }
-  
-  closeChat() {
-    this.isChatOpen = false;
-  }
+
   sendMessage(): void {
-    if (this.message.trim() === '') return;
-
-    const sender = 'User1';  // You can dynamically set the sender name
-    this.chatService.sendMessage(sender, this.message);
-
-    this.message = '';  // Clear input after sending
+    if (this.chatMessage.trim()) {
+      const message = {
+        sender: this.username,
+        text: this.chatMessage,
+      };
+      this.chatService.sendMessage(message);
+      this.chatMessage = '';
+    }
   }
-  
-  // sendMessage(): void {
-  //   if (this.chatMessage.trim()) {
-  //     const newMessage: Message = {
-  //       sender: this.username,
-  //       text: this.chatMessage.trim()
-  //     };
-  //     this.chatService.sendMessage(newMessage);
-  //     this.messages.push(newMessage); // Display own message instantly
-  //     this.chatMessage = '';
-  //   }
-  // }
-  
-  
 }
