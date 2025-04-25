@@ -16,12 +16,11 @@ export class VideoCallService {
   );
   private participants = new BehaviorSubject<string[]>([]);
 
-  //  Expression and audio confidence tracking
   private expressionAudioSnapshots: {
     [userId: string]: { timestamp: number; expression: any; volume: number }[];
   } = {};
 
-  private meetingLink: string = ''; // Store the meeting link
+  private meetingLink: string = ''; 
 
   constructor(
     private faceService: FaceExpressionService,
