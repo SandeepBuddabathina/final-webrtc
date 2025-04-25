@@ -29,14 +29,17 @@ export class FaceAuthService {
   }
 
   async loadReferenceImages(): Promise<HTMLImageElement[]> {
-    const metadata: any = await this.http.get('http://localhost:3000/images').toPromise();
+    const metadata: any = await this.http
+      .get('https://face-back-production.up.railway.app/images')
+      .toPromise();
 
     const validImages: HTMLImageElement[] = [];
 
     for (const meta of metadata) {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.src = `http://localhost:3000/image/${meta._id}`;
+      img.src = `https://face-back-production.up.railway.app/uploads/${meta.name}`; // Updated to match the new route
+
       img.alt = meta.name;
 
       await new Promise((resolve) => {
@@ -54,7 +57,9 @@ export class FaceAuthService {
     return validImages;
   }
 
-  async getDescriptor(input: HTMLImageElement | HTMLVideoElement): Promise<Float32Array | null> {
+  async getDescriptor(
+    input: HTMLImageElement | HTMLVideoElement
+  ): Promise<Float32Array | null> {
     try {
       const detection = await faceapi
         .detectSingleFace(input, new faceapi.TinyFaceDetectorOptions())
@@ -67,7 +72,9 @@ export class FaceAuthService {
     }
   }
 
-  async autoVerifyFace(liveDescriptor: Float32Array): Promise<{ matched: boolean; label?: string }> {
+  async autoVerifyFace(
+    liveDescriptor: Float32Array
+  ): Promise<{ matched: boolean; label?: string }> {
     if (this.referenceImages.length === 0) return { matched: false };
 
     const matches = [];

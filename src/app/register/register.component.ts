@@ -5,7 +5,7 @@ import { ToastrService } from 'ngx-toastr';
 @Component({
   selector: 'app-register',
   templateUrl: './register.component.html',
-  styleUrls: ['./register.component.css']
+  styleUrls: ['./register.component.css'],
 })
 export class RegisterComponent {
   name = '';
@@ -34,7 +34,11 @@ export class RegisterComponent {
       return;
     }
 
-    storedUsers.push({ name: this.name, email: this.email, password: this.password });
+    storedUsers.push({
+      name: this.name,
+      email: this.email,
+      password: this.password,
+    });
     localStorage.setItem('users', JSON.stringify(storedUsers));
     this.toastr.success('Registration successful!');
 
